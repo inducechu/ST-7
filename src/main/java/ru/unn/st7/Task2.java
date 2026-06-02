@@ -9,11 +9,11 @@ public final class Task2 {
     private Task2() {
     }
 
-    public static void printClientIp(WebDriver webDriver) {
-        webDriver.get("https://api.ipify.org/?format=json");
-        WebElement pre = webDriver.findElement(By.tagName("pre"));
-        JSONObject json = new JSONObject(pre.getText());
-        String ip = json.optString("ip", "IP не найден");
-        System.out.println("Задание 2. IPv4 клиента: " + ip);
+    public static void printClientIp(WebDriver driverInstance) {
+        driverInstance.get("https://api.ipify.org/?format=json");
+        WebElement rawContainer = driverInstance.findElement(By.tagName("pre"));
+        JSONObject parsedJson = new JSONObject(rawContainer.getText());
+        String clientIpAddress = parsedJson.optString("ip", "IP не найден");
+        System.out.println("Задание 2. IPv4 клиента: " + clientIpAddress);
     }
 }

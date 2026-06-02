@@ -7,6 +7,7 @@ import org.openqa.selenium.chrome.ChromeOptions;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -15,107 +16,107 @@ import java.util.regex.Pattern;
 public class App {
 
     public static void main(String[] args) {
-        configureChromeDriverPath();
-        ChromeOptions options = new ChromeOptions();
-        options.addArguments("--no-sandbox");
-        options.addArguments("--disable-dev-shm-usage");
+        setupDriverExecutable();
+        ChromeOptions configOptions = new ChromeOptions();
+        configOptions.addArguments("--no-sandbox");
+        configOptions.addArguments("--disable-dev-shm-usage");
 
-        WebDriver webDriver = new ChromeDriver(options);
+        WebDriver driverInstance = new ChromeDriver(configOptions);
         try {
-            String generatedPassword = readGeneratedPassword(webDriver);
-            System.out.println("Задание 1. Сгенерированный пароль: " + generatedPassword);
-            Task2.printClientIp(webDriver);
-            Task3.saveForecastToFile(webDriver, "result/forecast.txt");
-        } catch (Exception e) {
-            System.out.println("Error");
-            System.out.println(e.toString());
+            String passResult = fetchSecretKey(driverInstance);
+            System.out.println("Задание 1. Сгенерированный пароль: " + passResult);
+            Task2.printClientIp(driverInstance);
+            Task3.saveForecastToFile(driverInstance, "result/forecast.txt");
+        } catch (Exception error) {
+            System.err.println("Execution Error:");
+            error.printStackTrace();
         } finally {
-            webDriver.quit();
+            driverInstance.quit();
         }
     }
 
-    private static void configureChromeDriverPath() {
-        String existingProperty = System.getProperty("webdriver.chrome.driver");
-        if (existingProperty != null && !existingProperty.isBlank()) {
+    private static void setupDriverExecutable() {
+        String currentDriverProp = System.getProperty("webdriver.chrome.driver");
+        if (currentDriverProp != null && !currentDriverProp.strip().isEmpty()) {
             return;
         }
 
-        String envPath = System.getenv("CHROMEDRIVER_PATH");
-        if (envPath != null && !envPath.isBlank()) {
-            System.setProperty("webdriver.chrome.driver", envPath);
+        String locationEnv = System.getenv("CHROMEDRIVER_PATH");
+        if (locationEnv != null && !locationEnv.strip().isEmpty()) {
+            System.setProperty("webdriver.chrome.driver", locationEnv);
             return;
         }
 
-        Path defaultPath = Path.of("/opt/homebrew/bin/chromedriver");
-        if (Files.exists(defaultPath)) {
-            System.setProperty("webdriver.chrome.driver", defaultPath.toString());
+        Path homebrewLocation = Path.of("/opt/homebrew/bin/chromedriver");
+        if (Files.exists(homebrewLocation)) {
+            System.setProperty("webdriver.chrome.driver", homebrewLocation.toAbsolutePath().toString());
         }
     }
 
-    private static String readGeneratedPassword(WebDriver webDriver) {
-        webDriver.get("https://www.calculator.net/password-generator.html");
+    private static String fetchSecretKey(WebDriver driverInstance) {
+        driverInstance.get("https://www.calculator.net/password-generator.html");
 
-        clickGenerateButtonIfPresent(webDriver);
-        for (int i = 0; i < 20; i++) {
-            String password = extractPasswordViaJs(webDriver);
-            if (password != null && !password.isBlank()) {
-                return password;
+        executeSubmitAction(driverInstance);
+        for (int attempt = 0; attempt < 20; attempt++) {
+            String parsedKey = findKeyWithScripts(driverInstance);
+            if (parsedKey != null && !parsedKey.strip().isEmpty()) {
+                return parsedKey;
             }
             try {
                 Thread.sleep(500);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
-        return collectFromPageSource(webDriver.getPageSource()).stream()
-            .max(Comparator.comparingInt(String::length))
-            .orElse("Пароль не найден");
+        return scanRawHtml(driverInstance.getPageSource()).stream()
+                .max(Comparator.comparingInt(String::length))
+                .orElse("Пароль не найден");
     }
 
-    private static void clickGenerateButtonIfPresent(WebDriver webDriver) {
-        JavascriptExecutor js = (JavascriptExecutor) webDriver;
-        js.executeScript(
-            "const b = Array.from(document.querySelectorAll('button,input[type=\"button\"],input[type=\"submit\"]'))"
-                + ".find(e => ((e.innerText || '') + ' ' + (e.value || '')).toLowerCase().includes('generate'));"
-                + "if (b) b.click();"
+    private static void executeSubmitAction(WebDriver driverInstance) {
+        JavascriptExecutor executor = (JavascriptExecutor) driverInstance;
+        executor.executeScript(
+                "const targetBtn = Array.from(document.querySelectorAll('button, input[type=\"button\"], input[type=\"submit\"]'))"
+                        + ".find(elem => ((elem.innerText || '') + ' ' + (elem.value || '')).toLowerCase().includes('generate'));"
+                        + "if (targetBtn) targetBtn.click();"
         );
     }
 
-    private static List<String> collectFromPageSource(String pageSource) {
-        List<String> values = new java.util.ArrayList<>();
-        Pattern pattern = Pattern.compile("value=\\\"([^\\\"]{8,})\\\"");
-        Matcher matcher = pattern.matcher(pageSource);
-        while (matcher.find()) {
-            String candidate = matcher.group(1).trim();
-            boolean valid = !candidate.contains(" ")
-                && candidate.length() >= 8
-                && !candidate.equalsIgnoreCase("password")
-                && candidate.matches(".*[A-Za-z].*")
-                && candidate.matches(".*\\d.*");
-            if (valid) {
-                values.add(candidate);
+    private static List<String> scanRawHtml(String pageSource) {
+        List<String> matchedTokens = new ArrayList<>();
+        Pattern htmlPattern = Pattern.compile("value=\\\"([^\\\"]{8,})\\\"");
+        Matcher htmlMatcher = htmlPattern.matcher(pageSource);
+        while (htmlMatcher.find()) {
+            String item = htmlMatcher.group(1).trim();
+            boolean isCompliant = !item.contains(" ")
+                    && item.length() >= 8
+                    && !item.equalsIgnoreCase("password")
+                    && item.matches(".*[A-Za-z].*")
+                    && item.matches(".*\\d.*");
+            if (isCompliant) {
+                matchedTokens.add(item);
             }
         }
-        return values;
+        return matchedTokens;
     }
 
-    private static String extractPasswordViaJs(WebDriver webDriver) {
-        JavascriptExecutor js = (JavascriptExecutor) webDriver;
-        Object result = js.executeScript(
-            "const selectors = ["
-                + "'#generated_password', '#result', '[id*=pass]', '[id*=result]', '[class*=pass]', '[class*=result]',"
-                + "'input[readonly]', 'input[type=text]', 'textarea'];"
-                + "const vals = [];"
-                + "selectors.forEach(s => document.querySelectorAll(s).forEach(e => {"
-                + "  const v = (e.value || e.textContent || '').trim();"
-                + "  const ok = v.length >= 8 && !v.includes(' ') && v.toLowerCase() !== 'password'"
-                + "    && /[A-Za-z]/.test(v) && /\\d/.test(v);"
-                + "  if (ok) vals.push(v);"
-                + "}));"
-                + "vals.sort((a,b) => b.length-a.length);"
-                + "return vals.length ? vals[0] : '';"
+    private static String findKeyWithScripts(WebDriver driverInstance) {
+        JavascriptExecutor executor = (JavascriptExecutor) driverInstance;
+        Object scriptOutput = executor.executeScript(
+                "const targetQueries = ["
+                        + "'#generated_password', '#result', '[id*=pass]', '[id*=result]', '[class*=pass]', '[class*=result]',"
+                        + "'input[readonly]', 'input[type=text]', 'textarea'];"
+                        + "const matches = [];"
+                        + "targetQueries.forEach(query => document.querySelectorAll(query).forEach(element => {"
+                        + "  const textVal = (element.value || element.textContent || '').trim();"
+                        + "  const isValidPass = textVal.length >= 8 && !textVal.includes(' ') && textVal.toLowerCase() !== 'password'"
+                        + "    && /[A-Za-z]/.test(textVal) && /\\d/.test(textVal);"
+                        + "  if (isValidPass) matches.push(textVal);"
+                        + "}));"
+                        + "matches.sort((first, second) => second.length - first.length);"
+                        + "return matches.length ? matches[0] : '';"
         );
-        return result == null ? "" : result.toString();
+        return scriptOutput == null ? "" : scriptOutput.toString();
     }
 }

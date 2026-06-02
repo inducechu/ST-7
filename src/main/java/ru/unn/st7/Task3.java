@@ -15,41 +15,42 @@ import java.util.List;
 import java.util.Locale;
 
 public final class Task3 {
-    private static final String FORECAST_URL =
-        "https://api.open-meteo.com/v1/forecast?latitude=56&longitude=44&hourly=temperature_2m,rain&current=cloud_cover&timezone=Europe%2FMoscow&forecast_days=1&wind_speed_unit=ms";
+    private static final String METEO_ENDPOINT =
+            "https://api.open-meteo.com/v1/forecast?latitude=56&longitude=44&hourly=temperature_2m,rain&current=cloud_cover&timezone=Europe%2FMoscow&forecast_days=1&wind_speed_unit=ms";
 
     private Task3() {
     }
 
-    public static void saveForecastToFile(WebDriver webDriver, String outputPath) throws IOException {
-        webDriver.get(FORECAST_URL);
+    public static void saveForecastToFile(WebDriver driverInstance, String fileDestination) throws IOException {
+        driverInstance.get(METEO_ENDPOINT);
 
-        WebElement pre = webDriver.findElement(By.tagName("pre"));
-        JSONObject root = new JSONObject(pre.getText());
-        JSONObject hourly = root.getJSONObject("hourly");
-        JSONArray times = hourly.getJSONArray("time");
-        JSONArray temperatures = hourly.getJSONArray("temperature_2m");
-        JSONArray rain = hourly.getJSONArray("rain");
+        WebElement textHolder = driverInstance.findElement(By.tagName("pre"));
+        JSONObject jsonRoot = new JSONObject(textHolder.getText());
+        JSONObject hourlyData = jsonRoot.getJSONObject("hourly");
+        JSONArray timeline = hourlyData.getJSONArray("time");
+        JSONArray tempRecords = hourlyData.getJSONArray("temperature_2m");
+        JSONArray rainRecords = hourlyData.getJSONArray("rain");
 
-        List<String> lines = new ArrayList<>();
-        lines.add(String.format("%-3s\t%-16s\t%-12s\t%-12s", "№", "Дата/время", "Температура", "Осадки (мм)"));
-        for (int i = 0; i < times.length(); i++) {
-            String row = String.format(
-                Locale.US,
-                "%-3d\t%-16s\t%-12.1f\t%-12.2f",
-                i + 1,
-                times.getString(i),
-                temperatures.getDouble(i),
-                rain.getDouble(i)
+        List<String> textRows = new ArrayList<>();
+        textRows.add(String.format("%-3s\t%-16s\t%-12s\t%-12s", "№", "Дата/время", "Температура", "Осадки (мм)"));
+
+        for (int index = 0; index < timeline.length(); index++) {
+            String structuredRow = String.format(
+                    Locale.US,
+                    "%-3d\t%-16s\t%-12.1f\t%-12.2f",
+                    index + 1,
+                    timeline.getString(index),
+                    tempRecords.getDouble(index),
+                    rainRecords.getDouble(index)
             );
-            lines.add(row);
+            textRows.add(structuredRow);
         }
 
-        Path path = Path.of(outputPath);
-        if (path.getParent() != null) {
-            Files.createDirectories(path.getParent());
+        Path targetFilePath = Path.of(fileDestination);
+        if (targetFilePath.getParent() != null) {
+            Files.createDirectories(targetFilePath.getParent());
         }
-        Files.write(path, lines, StandardCharsets.UTF_8);
-        System.out.println("Задание 3. Прогноз сохранен в файл: " + outputPath);
+        Files.write(targetFilePath, textRows, StandardCharsets.UTF_8);
+        System.out.println("Задание 3. Прогноз сохранен в файл: " + fileDestination);
     }
 }
